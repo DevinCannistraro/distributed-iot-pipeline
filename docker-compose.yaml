@@ -1,0 +1,51 @@
+services:
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      bash -c "
+        gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 &
+        sleep 5 &&
+        PUBSUB_EMULATOR_HOST=localhost:8085 bash /scripts/create_topic.sh &&
+        wait
+      "
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - GCP_PROJECT_ID=local-dev
+      - PUBSUB_TOPIC_ID=sensor-readings
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 50051)); s.close()\""]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  edge-simulator:
+    build:
+      context: ./edge-simulator
+      dockerfile: Dockerfile
+    environment:
+      - INGESTION_TARGET=ingestion:50051
+      - REPORT_INTERVAL=5
+    depends_on:
+      ingestion:
+        condition: service_healthy

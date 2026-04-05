@@ -1,0 +1,6 @@
+grpcio==1.72.0
+grpcio-tools==1.72.0
+google-cloud-pubsub==2.29.0
+protobuf>=6.30.0
+pytest==8.3.5
+pytest-asyncio==0.25.3

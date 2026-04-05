@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package freezer.v1;
+
+// Ingestion service — the only public gRPC surface.
+service FreezerIngestion {
+  // Unary RPC: Pi sends a batch, cloud acknowledges.
+  rpc ReportReadings (ReadingBatch) returns (Ack);
+}
+
+// One call per Pi per reporting interval.
+message ReadingBatch {
+  string store_id  = 1;  // stable logical ID — e.g. "store-101"
+  string device_id = 2;  // Pi hostname/serial — tracing only, not a logical entity
+  repeated FreezerReading readings = 3;
+}
+
+message FreezerReading {
+  string freezer_id = 1;  // stable logical ID — e.g. "freezer-a"
+  double temp_c     = 2;
+  // When the sensor measured the temperature (Pi clock, UTC).
+  google.protobuf.Timestamp reading_time = 3;
+}
+
+message Ack {
+  bool accepted = 1;
+}

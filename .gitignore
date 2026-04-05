@@ -1,0 +1,13 @@
+/local
+
+# Generated protobuf stubs
+**/generated/freezer_pb2*.py
+**/generated/freezer_pb2*.pyi
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Docker
+.env
