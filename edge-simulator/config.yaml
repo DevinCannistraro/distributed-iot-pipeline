@@ -1,0 +1,15 @@
+# Pi → store/freezer assignments for local development.
+# Each entry represents one Raspberry Pi edge device.
+
+pis:
+  - device_id: pi-a
+    store_id: store-101
+    freezers: [freezer-a, freezer-b]
+
+  - device_id: pi-b
+    store_id: store-101
+    freezers: [freezer-c]
+
+  - device_id: pi-c
+    store_id: store-202
+    freezers: [freezer-a, freezer-b, freezer-c]
