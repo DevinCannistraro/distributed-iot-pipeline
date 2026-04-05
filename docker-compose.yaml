@@ -4,7 +4,6 @@ services:
     command: >
       bash -c "
         gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 &
-        sleep 5 &&
         PUBSUB_EMULATOR_HOST=localhost:8085 bash /scripts/create_topic.sh &&
         wait
       "
@@ -13,11 +12,11 @@ services:
     volumes:
       - ./scripts:/scripts:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8085 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 15
-      start_period: 10s
+      test: ["CMD-SHELL", "test -f /tmp/pubsub-ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   ingestion:
     build:
@@ -49,3 +48,41 @@ services:
     depends_on:
       ingestion:
         condition: service_healthy
+
+  firestore-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators firestore start --host-port=0.0.0.0:8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  processor:
+    build:
+      context: ./processor
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - GCP_PROJECT_ID=local-dev
+      - PROCESSOR_MODE=pull
+      - PUBSUB_SUBSCRIPTION_ID=sensor-readings-processor
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - FIRESTORE_EMULATOR_HOST=firestore-emulator:8080
+      - PORT=8081
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+      firestore-emulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

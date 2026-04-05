@@ -4,7 +4,7 @@ set -e
 
 EMULATOR_HOST="${PUBSUB_EMULATOR_HOST:-localhost:8085}"
 PROJECT_ID="local-dev"
-SUBSCRIPTION_ID="sensor-readings-pull"
+SUBSCRIPTION_ID="sensor-readings-debug"
 
 SUB_PATH="projects/${PROJECT_ID}/subscriptions/${SUBSCRIPTION_ID}"
 PULL_URL="http://${EMULATOR_HOST}/v1/${SUB_PATH}:pull"
