@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Freezer } from "../hooks/useFreezersByStore";
-import { TEMP_MIN_C, TEMP_MAX_C, STALE_THRESHOLD_MS } from "../config";
+import { TEMP_MIN_C, TEMP_MAX_C, STALE_THRESHOLD_MS, PCT_OVER_TEMP_THRESHOLD } from "../config";
 
 interface FreezerCardProps {
   freezer: Freezer;
+  pctOverTemp: number | null;
 }
 
 function formatRelativeTime(date: Date, now: Date): string {
@@ -16,7 +17,19 @@ function formatRelativeTime(date: Date, now: Date): string {
   return `${diffHr}h ago`;
 }
 
-export function FreezerCard({ freezer }: FreezerCardProps) {
+function AnalysisStat({ pct }: { pct: number | null }) {
+  if (pct === null) {
+    return <span className="analysis-stat analysis-stat--unknown">📊 4h over temp: —</span>;
+  }
+  const isHigh = pct > PCT_OVER_TEMP_THRESHOLD;
+  return (
+    <span className={`analysis-stat ${isHigh ? "analysis-stat--high" : "analysis-stat--ok"}`}>
+      📊 4h over temp: {pct.toFixed(1)}%
+    </span>
+  );
+}
+
+export function FreezerCard({ freezer, pctOverTemp }: FreezerCardProps) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -49,6 +62,9 @@ export function FreezerCard({ freezer }: FreezerCardProps) {
           <span className="badge badge-temp">⚠ Out of range</span>
         )}
         {isStale && <span className="badge badge-stale">⚠ Stale</span>}
+      </div>
+      <div className="freezer-analysis">
+        <AnalysisStat pct={pctOverTemp} />
       </div>
     </div>
   );

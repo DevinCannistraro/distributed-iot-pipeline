@@ -302,6 +302,30 @@ main {
   color: var(--amber);
 }
 
+/* Analysis stat */
+.freezer-analysis {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.analysis-stat {
+  font-size: 0.75rem;
+}
+
+.analysis-stat--unknown {
+  color: var(--text-muted);
+}
+
+.analysis-stat--ok {
+  color: var(--text-muted);
+}
+
+.analysis-stat--high {
+  color: var(--red);
+  font-weight: 600;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .layout {
