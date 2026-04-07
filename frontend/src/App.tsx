@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStores } from "./hooks/useStores";
-import { StoreList } from "./components/StoreList";
+import { StoreSelector } from "./components/StoreList";
 import { FreezerDash } from "./components/FreezerDash";
 
 function App() {
@@ -18,12 +18,14 @@ function App() {
         )}
       </header>
       <div className="layout">
-        <StoreList
-          stores={stores}
-          loading={loading}
-          selectedStoreId={selectedStoreId}
-          onSelectStore={setSelectedStoreId}
-        />
+        <aside className="sidebar">
+          <StoreSelector
+            stores={stores}
+            loading={loading}
+            selectedStoreId={selectedStoreId}
+            onSelectStore={setSelectedStoreId}
+          />
+        </aside>
         <main>
           {selectedStoreId ? (
             <FreezerDash storeId={selectedStoreId} />
