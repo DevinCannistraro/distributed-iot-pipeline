@@ -75,6 +75,11 @@ services:
       - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
       - FIRESTORE_EMULATOR_HOST=firestore-emulator:8080
       - PORT=8081
+      - BIGQUERY_PROJECT_ID=distributed-iot-pipeline
+      - BIGQUERY_DATASET_ID=freezer_monitor
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/adc.json
+    volumes:
+      - ~/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro
     depends_on:
       pubsub-emulator:
         condition: service_healthy
@@ -86,3 +91,24 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+
+  query-service:
+    build:
+      context: ./query-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - BIGQUERY_PROJECT_ID=distributed-iot-pipeline
+      - BIGQUERY_DATASET_ID=freezer_monitor
+      - TEMP_MAX_C=-15
+      - PORT=8082
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/adc.json
+    volumes:
+      - ~/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s

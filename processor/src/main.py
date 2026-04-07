@@ -4,7 +4,8 @@ Supports two modes controlled by PROCESSOR_MODE env var:
   - "pull" (default, local dev): pulls from Pub/Sub subscription in a background thread
   - "push" (production): receives HTTP POST from Pub/Sub push subscription
 
-Flask always runs for the /health endpoint regardless of mode.
+Flask runs for /health and /process (push mode). Analytics queries live in
+the separate query-service (read/query plane).
 """
 
 import base64
@@ -27,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Lazy-init Firestore client (allows import without side effects for testing)
+# Lazy-init clients
 _db = None
+_bq = None
 
 
 def _get_db() -> firestore.Client:
@@ -37,6 +39,15 @@ def _get_db() -> firestore.Client:
         project = os.environ.get("GCP_PROJECT_ID", "local-dev")
         _db = firestore.Client(project=project)
     return _db
+
+
+def _get_bq():
+    """Return a BigQuery client if BIGQUERY_DATASET_ID is configured, else None."""
+    global _bq
+    if _bq is None and os.environ.get("BIGQUERY_DATASET_ID"):
+        from google.cloud import bigquery
+        _bq = bigquery.Client(project=os.environ.get("BIGQUERY_PROJECT_ID"))
+    return _bq
 
 
 # ---------- Push mode endpoint ----------
@@ -52,10 +63,9 @@ def push_handler():
     data = json.loads(raw_data)
 
     try:
-        process_reading(data, _get_db())
+        process_reading(data, _get_db(), _get_bq())
     except ValueError as e:
         logger.warning("Invalid message payload: %s", e)
-        # Return 204 so Pub/Sub doesn't retry a permanently bad message
         return "", 204
     except Exception:
         logger.exception("Failed to process reading")
@@ -90,7 +100,6 @@ def _pull_loop(
                 timeout=10,
             )
         except Exception as e:
-            # Timeout or transient error — retry
             logger.debug("Pull returned: %s", e)
             time.sleep(1)
             continue
@@ -102,7 +111,7 @@ def _pull_loop(
         for msg in response.received_messages:
             try:
                 data = json.loads(msg.message.data.decode("utf-8"))
-                process_reading(data, db)
+                process_reading(data, db, _get_bq())
                 ack_ids.append(msg.ack_id)
             except ValueError as e:
                 logger.warning("Skipping invalid message: %s", e)

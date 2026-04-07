@@ -1,6 +1,7 @@
 """Processor core logic: write sensor readings to Firestore with newer-wins idempotency."""
 
 import logging
+import os
 from datetime import datetime, timezone
 
 from google.cloud import firestore
@@ -33,7 +34,30 @@ def parse_reading(data: dict) -> dict:
     }
 
 
-def process_reading(data: dict, db: firestore.Client) -> bool:
+def _stream_to_bigquery(reading: dict, bq_client, dataset_id: str, project_id: str) -> None:
+    """Stream one reading row to BigQuery. Errors are logged but never propagate —
+    a BigQuery failure must not block the Firestore hot path or cause Pub/Sub retries."""
+    try:
+        table_ref = f"{project_id}.{dataset_id}.sensor_readings"
+        insert_id = f"{reading['store_id']}_{reading['freezer_id']}_{reading['reading_time'].isoformat()}"
+        row = {
+            "store_id": reading["store_id"],
+            "freezer_id": reading["freezer_id"],
+            "device_id": reading["device_id"],
+            "temp_c": reading["temp_c"],
+            "reading_time": reading["reading_time"].isoformat(),
+            "received_at": reading["received_at"].isoformat(),
+        }
+        errors = bq_client.insert_rows_json(table_ref, [row], row_ids=[insert_id])
+        if errors:
+            logger.warning("BigQuery insert errors for %s/%s: %s", reading["store_id"], reading["freezer_id"], errors)
+        else:
+            logger.debug("BigQuery row written for %s/%s", reading["store_id"], reading["freezer_id"])
+    except Exception:
+        logger.exception("BigQuery write failed for %s/%s — skipping", reading["store_id"], reading["freezer_id"])
+
+
+def process_reading(data: dict, db: firestore.Client, bq_client=None) -> bool:
     """Write a single sensor reading to Firestore using newer-wins idempotency.
 
     Document path: stores/{store_id}/freezers/{freezer_id}
@@ -42,7 +66,10 @@ def process_reading(data: dict, db: firestore.Client) -> bool:
     and only write if the incoming reading is strictly newer. This prevents
     out-of-order Pub/Sub delivery from overwriting fresher data.
 
-    Returns True if the document was written/updated, False if skipped.
+    If bq_client is provided, also streams the reading to BigQuery (cold path).
+    BigQuery write failures are logged and swallowed — they never affect the hot path.
+
+    Returns True if the Firestore document was written/updated, False if skipped.
     """
     reading = parse_reading(data)
     store_id = reading["store_id"]
@@ -91,4 +118,13 @@ def process_reading(data: dict, db: firestore.Client) -> bool:
             freezer_id,
             reading["temp_c"],
         )
+
+    # Cold path: BigQuery write (always attempt, regardless of Firestore newer-wins result,
+    # so the full history is preserved even for duplicate deliveries).
+    if bq_client is not None:
+        dataset_id = os.environ.get("BIGQUERY_DATASET_ID", "")
+        project_id = os.environ.get("BIGQUERY_PROJECT_ID", "")
+        if dataset_id and project_id:
+            _stream_to_bigquery(reading, bq_client, dataset_id, project_id)
+
     return written
