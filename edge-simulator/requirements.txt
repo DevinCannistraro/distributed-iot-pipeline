@@ -2,3 +2,5 @@ grpcio==1.72.0
 grpcio-tools==1.72.0
 protobuf>=6.30.0
 pyyaml==6.0.2
+google-auth>=2.0
+requests>=2.28

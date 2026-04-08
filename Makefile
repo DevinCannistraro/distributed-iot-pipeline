@@ -5,7 +5,7 @@ INGESTION_GEN = ingestion/src/generated
 SIMULATOR_GEN = edge-simulator/src/generated
 PROCESSOR_GEN = processor/src/generated
 
-.PHONY: proto-gen test test-processor docker-up docker-down run-ingestion run-edge-simulator pull-messages clean
+.PHONY: proto-gen test test-processor docker-up docker-down run-ingestion run-edge-simulator run-simulator-cloud pull-messages clean
 
 # --- Proto generation ---
 
@@ -73,6 +73,17 @@ run-ingestion: proto-gen
 
 run-edge-simulator: proto-gen
 	docker compose up --build edge-simulator
+
+# Run edge simulator against the deployed Cloud Run ingestion service (requires pi-sa-key.json)
+run-simulator-cloud: proto-gen
+	docker build -t edge-sim-cloud ./edge-simulator
+	docker run --rm \
+		-v $(CURDIR)/edge-simulator/pi-sa-key.json:/app/pi-sa-key.json:ro \
+		edge-sim-cloud \
+		python src/run.py \
+			--target ingestion-884148543484.us-east1.run.app:443 \
+			--sa-key /app/pi-sa-key.json \
+			--interval 30
 
 # --- Pub/Sub emulator: pull messages for verification ---
 
