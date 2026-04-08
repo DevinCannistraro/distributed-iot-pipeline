@@ -83,7 +83,7 @@ def process_reading(data: dict, db: firestore.Client, bq_client=None) -> bool:
         snapshot = fref.get(transaction=txn)
 
         if snapshot.exists:
-            existing_time = snapshot.get("reading_time")
+            existing_time = snapshot.to_dict().get("reading_time")
             # Firestore stores datetime as DatetimeWithNanoseconds; compare directly
             if existing_time and new_reading["reading_time"] <= existing_time:
                 logger.debug(

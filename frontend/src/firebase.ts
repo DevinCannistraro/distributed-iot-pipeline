@@ -1,7 +1,9 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
-const app = initializeApp({ projectId: "local-dev" });
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "local-dev";
+
+const app = initializeApp({ projectId });
 const db = getFirestore(app);
 
 if (import.meta.env.DEV) {

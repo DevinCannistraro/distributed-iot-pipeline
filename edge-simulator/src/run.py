@@ -28,6 +28,33 @@ def _make_timestamp(dt: datetime) -> Timestamp:
     return ts
 
 
+def _make_channel(target: str, sa_key_path: str | None) -> grpc.Channel:
+    """Create a gRPC channel.
+
+    If sa_key_path is provided, uses TLS + ID token auth for Cloud Run.
+    Otherwise uses an insecure channel for local dev.
+    """
+    if sa_key_path:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import service_account
+
+        audience = f"https://{target.split(':')[0]}"
+        creds = service_account.IDTokenCredentials.from_service_account_file(
+            sa_key_path, target_audience=audience
+        )
+
+        def _id_token_plugin(context, callback):
+            creds.refresh(google_requests.Request())
+            callback([("authorization", f"Bearer {creds.token}")], None)
+
+        call_creds = grpc.metadata_call_credentials(_id_token_plugin)
+        channel_creds = grpc.ssl_channel_credentials()
+        combined_creds = grpc.composite_channel_credentials(channel_creds, call_creds)
+        return grpc.secure_channel(target, combined_creds)
+
+    return grpc.insecure_channel(target)
+
+
 class VirtualPi:
     """Simulates a single Pi reporting freezer temps over gRPC."""
 
@@ -38,12 +65,14 @@ class VirtualPi:
         freezers: list[str],
         target: str,
         interval: float,
+        sa_key_path: str | None = None,
     ):
         self.device_id = device_id
         self.store_id = store_id
         self.freezers = freezers
         self.target = target
         self.interval = interval
+        self.sa_key_path = sa_key_path
         # Random-walk state: start each freezer at a typical temp
         self._temps = {fid: -18.0 + random.uniform(-2, 2) for fid in freezers}
 
@@ -59,15 +88,16 @@ class VirtualPi:
 
     def run(self) -> None:
         """Blocking loop — intended to be run in a thread."""
-        channel = grpc.insecure_channel(self.target)
+        channel = _make_channel(self.target, self.sa_key_path)
         stub = freezer_pb2_grpc.FreezerIngestionStub(channel)
         logger.info(
-            "[%s] Started — store=%s freezers=%s interval=%ss target=%s",
+            "[%s] Started — store=%s freezers=%s interval=%ss target=%s auth=%s",
             self.device_id,
             self.store_id,
             self.freezers,
             self.interval,
             self.target,
+            "id-token" if self.sa_key_path else "insecure",
         )
 
         while not shutdown_event.is_set():
@@ -120,13 +150,18 @@ def main() -> None:
     parser.add_argument(
         "--target",
         default=os.environ.get("INGESTION_TARGET", "localhost:50051"),
-        help="gRPC target (host:port)",
+        help="gRPC target (host:port). For Cloud Run: <host>:443",
     )
     parser.add_argument(
         "--interval",
         type=float,
         default=float(os.environ.get("REPORT_INTERVAL", "30")),
         help="Seconds between reports (default: 30)",
+    )
+    parser.add_argument(
+        "--sa-key",
+        default=os.environ.get("SA_KEY_PATH"),
+        help="Path to service account JSON key for Cloud Run auth (omit for local dev)",
     )
     args = parser.parse_args()
 
@@ -140,6 +175,7 @@ def main() -> None:
             freezers=pi_cfg["freezers"],
             target=args.target,
             interval=args.interval,
+            sa_key_path=args.sa_key,
         )
         t = threading.Thread(target=pi.run, name=pi.device_id, daemon=True)
         threads.append(t)
